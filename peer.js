@@ -48,6 +48,14 @@ function Peer() {
     }
     this._pc = pc;
     this._listeners = Object.create(null);
+    
+    /*
+    ['onclosedconnection', 'onconnection', 'oniceconnectionstatechange', 'onnegotiationneeded', 'onremovestream', 'onsignalingstatechange'].forEach(function (key) {
+        pc[key] = function () {
+            console.log(key, arguments);
+        };
+    });
+    */
 
     pc.onicecandidate = function (e) {
         if (e.candidate === null) {
@@ -56,8 +64,8 @@ function Peer() {
         pc.onicecandidate = null;
         _this._emit('settings', {candidate: e.candidate});
     };
-    pc.onaddstream  = function (e) {
-        console.log('onaddstream', e);
+    pc.onaddstream  = function (stream) {
+        _this._emit('stream', stream.stream);
     };
     pc.ondatachannel = function (e) {
         console.log('new channel', e.channel);
@@ -78,6 +86,8 @@ Peer.prototype.invite = function (options) {
         this._emit.bind(this, 'error'),
         options || constraints
     );
+
+    return this;
 };
 
 Peer.prototype.update = function (opts) {
@@ -90,14 +100,9 @@ Peer.prototype.update = function (opts) {
             
             pc.createAnswer(
                 function (answer) {
-                    /*_this._pc.setLocalDescription(answer);*/
-                    pc.setRemoteDescription(answer);
-                    _this._emit('connected');
+                    pc.setLocalDescription(answer);
+                    _this._emit('settings', {answer: answer});
                 },
-                /*function (e) {*/
-                    /*throw e;*/
-                    /*console.log(e.message);*/
-                    /*},*/
                 _this._emit.bind(_this, 'error'),
                 constraints
             );
@@ -107,6 +112,10 @@ Peer.prototype.update = function (opts) {
 
     if (settings.candidate) {
         this._pc.addIceCandidate(new RTCIceCandidate(settings.candidate));
+    }
+
+    if (settings.answer) {
+        this._pc.setRemoteDescription(new SessionDescription(settings.answer));
     }
 
     console.log('update', settings);
@@ -147,6 +156,11 @@ Peer.prototype.createChannel = function () {
     this._channel.onmessage = function (message) {
         console.log('message', message);
     };
+    this.invite();
+};
+
+Peer.prototype.addStream = function (stream) {
+    this._pc.addStream(stream);
     this.invite();
 };
 

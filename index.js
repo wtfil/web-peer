@@ -1,4 +1,6 @@
 var isChrome = !!navigator.userAgent.match(/Chrome/),
+    getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia,
+    getUserMedia = getUserMedia.bind(navigator),
     eventChannel = new Firebase('https://osv731ljk01.firebaseio-demo.com/'),
     peer = new Peer();
 
@@ -11,46 +13,49 @@ if (isChrome) {
     peer.on('settings', function (r) {
         eventChannel.push(JSON.parse(JSON.stringify(r)));
     });
-    setTimeout(function () {
-        /*peer.createChannel();*/
-    }, 2000);
-    /*peer.send({foo: 'bar'});*/
+    eventChannel.on('value', function (r) {
+        var v = r.val();
+        if (v && v.answer) {
+            peer.update(v);
+        }
+    });
+    /*peer.createChannel();*/
 } else {
     eventChannel.on('value', function (r) {
         var pull = r.val();
         if (!pull) {
             return;
         }
-        /*console.log(pull);*/
         Object.keys(pull).forEach(function (key) {
             var val = pull[key];
             peer.update(val);
         });
     });
+
+    peer.on('settings', function (r) {
+        var a = JSON.parse(JSON.stringify(r));
+        eventChannel.set(a);
+    });
 }
 
-/*
-p2
-    .on('settings', function (settings) {
-    })
-    .on('error', function (e) {
-        throw e;
-    });
 
-p1
-    .on('settings', function (settings) {
-        console.log('settings', settings);
-        p2.update(settings);
-        console.log(p1._channel.readyState);
-    })
-    .on('peer', function () {
+
+window.addEventListener('load', function () {
+    var video = document.createElement('video');
+    document.body.appendChild(video);
+
+    function setStream(stream) {
+        video.src = URL.createObjectURL(stream);
+        video.play();
+    }
+
+    if (isChrome) {
         
-    })
-    .on('error', function (e) {
-        throw e;
-    });
-
-setTimeout(function () {
-    p1.send({foo: 4});
-}, 2000);
-*/
+        getUserMedia({ audio: true, video: true }, function (stream) {
+            setStream(stream);
+            peer.addStream(stream);
+        }, console.error.bind(console));
+    } else {
+        peer.on('stream', setStream);
+    }
+}, false);
