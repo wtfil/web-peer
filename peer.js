@@ -2,18 +2,6 @@
 var PeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
 var SessionDescription = window.RTCSessionDescription || window.mozRTCSessionDescription || window.webkitRTCSessionDescription;
 var RTCIceCandidate = window.RTCIceCandidate || window.mozRTCIceCandidate || window.webkitRTCIceCandidate;
-/*
-var GET_USER_MEDIA = navigator.getUserMedia ? "getUserMedia" :
-    navigator.mozGetUserMedia ? "mozGetUserMedia" :
-    navigator.webkitGetUserMedia ? "webkitGetUserMedia" : "getUserMedia";
-
-
-var v = document.createElement("video");
-
-var SRC_OBJECT = 'srcObject' in v ? "srcObject" :
-    'mozSrcObject' in v ? "mozSrcObject" :
-    'webkitSrcObject' in v ? "webkitSrcObject" : "srcObject";
-*/
 
 var server = {
     iceServers: [
@@ -37,7 +25,6 @@ var constraints = {
         OfferToReceiveVideo: true
     }
 };
-/*var configuration = [{"url": "stun:stun.services.mozilla.com"}];*/
 
 function Peer() {
     var _this = this,
@@ -50,6 +37,7 @@ function Peer() {
     }
     this._pc = pc;
     this._listeners = Object.create(null);
+    this._messagePull = [];
     
     pc.onicecandidate = function (e) {
         if (e.candidate === null) {
@@ -135,18 +123,23 @@ Peer.prototype.on = function (name, haldler) {
 Peer.prototype.createChannel = function () {
     var options = {
         reliable: false,
-        /*maxRetransmitTime: 3000*/
-    };
-    this._channel = this._pc.createDataChannel('myLabel', options);
-    this._channel.onopen = function () {
-        console.log('open channel', arguments);
+    },
+        _this = this,
+        channel = this._pc.createDataChannel('myLabel', options);
+
+    channel.onopen = function () {
+        _this._messagePull.forEach(function (message) {
+            channel.send(message);
+        });
     };
 
-    this._channel.onerror = function () {
+    channel.onerror = function () {
         console.log('error', arguments);
     };
 
-    this._channel.onmessage = this._onChannelMessage.bind(this);
+    channel.onmessage = this._onChannelMessage.bind(this);
+
+    this._channel = channel;
     this.invite();
 };
 
@@ -162,7 +155,11 @@ Peer.prototype.addStream = function (stream) {
 
 Peer.prototype.send = function (data) {
     if (!this._channel) {
-        return this._emit('error', new Error('dataChannel is not created'));
+        this.createChannel();
     }
-    this._channel.send(data);
+    if ('open' !== this._channel.readyState) {
+        this._messagePull.push(data);
+    } else {
+        this._channel.send(data);
+    }
 };
