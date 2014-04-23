@@ -30,6 +30,7 @@ var options = {
 };
 
 var constraints = {
+    optional: [],
     mandatory: {
         OfferToReceiveAudio: true,
         OfferToReceiveVideo: true
@@ -78,6 +79,7 @@ function Peer() {
 Peer.prototype.invite = function (options) {
     var _this = this;
 
+    console.log(this._pc);
     this._pc.createOffer(
         function (offer) {
             _this._pc.setLocalDescription(offer);
@@ -96,10 +98,11 @@ Peer.prototype.update = function (opts) {
         _this = this;
     
     if (settings.offer) {
+        console.log('update offer' , settings.offer);
         pc.setRemoteDescription(new SessionDescription(settings.offer), function () {
-            
             pc.createAnswer(
                 function (answer) {
+                    console.log(2);
                     pc.setLocalDescription(answer);
                     _this._emit('settings', {answer: answer});
                 },
@@ -111,14 +114,15 @@ Peer.prototype.update = function (opts) {
     }
 
     if (settings.candidate) {
+        console.log('update candidate' , settings.candidate);
         this._pc.addIceCandidate(new RTCIceCandidate(settings.candidate));
     }
 
     if (settings.answer) {
+        console.log('update answer' , settings.answer);
         this._pc.setRemoteDescription(new SessionDescription(settings.answer));
     }
 
-    console.log('update', settings);
 
 };
 
@@ -141,7 +145,8 @@ Peer.prototype.on = function (name, haldler) {
 
 Peer.prototype.createChannel = function () {
     var options = {
-        reliable: false
+        reliable: false,
+        /*maxRetransmitTime: 3000*/
     };
     /*this._channel = this._pc.createDataChannel(Date.now().toString(), options);*/
     this._channel = this._pc.createDataChannel('myLabel', options);

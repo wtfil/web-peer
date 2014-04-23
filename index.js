@@ -8,7 +8,7 @@ peer.on('error', function (e) {
     console.log(e.stack);
     throw e;
 });
-if (isChrome) {
+if (!isChrome) {
     eventChannel.remove();
     peer.on('settings', function (r) {
         eventChannel.push(JSON.parse(JSON.stringify(r)));
@@ -19,7 +19,8 @@ if (isChrome) {
             peer.update(v);
         }
     });
-    /*peer.createChannel();*/
+    peer.createChannel();
+    /*peer.invite();*/
 } else {
     eventChannel.on('value', function (r) {
         var pull = r.val();
@@ -41,6 +42,7 @@ if (isChrome) {
 
 
 window.addEventListener('load', function () {
+    return;
     var video = document.createElement('video');
     document.body.appendChild(video);
 
