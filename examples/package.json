@@ -1,0 +1,15 @@
+{
+    "name": "example",
+    "version": "0.0.1",
+    "dependencies": {
+        "koa": "*",
+        "koa-static": "*",
+        "socket.io": "*"
+    },
+    "scripts": {
+        "start": "node --harmony app.js"
+    },
+    "engines": {
+        "node": ">= 0.11.0"
+    }
+}
