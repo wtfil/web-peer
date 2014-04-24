@@ -19,7 +19,6 @@ socket.emit('find');
 // if create channel if someone look at me
 socket.on('find', function () {
     console.log('socket on find');
-    peer.send('hello');
 });
 
 // syncing peers
