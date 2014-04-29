@@ -31,7 +31,39 @@ peer.on('sync', function (data) {
     socket.emit('sync', data);
 });
 
+window.addEventListener('load', function () {
+    var input = document.querySelector('input[type=file]'),
+        progress = document.querySelector('progress'),
+        link = document.querySelector('a');
 
+    peer.on('new file', function (file) {
+        console.time('file');
+        file.on('progress', function (val) {
+            progress.value = val;
+        });
+    });
+
+    peer.on('file', function (blob) {
+        console.timeEnd('file');
+        var reader = new FileReader();
+
+        reader.readAsDataURL(blob); 
+        reader.onloadend = function () {
+            link.innerHTML = blob.name;
+            link.download = blob.name;
+            link.href = reader.result;
+        };
+    });
+
+    input.addEventListener('change', function () {
+        if (input.files.length) {
+            peer.sendFile(input.files[0]);
+        }
+    });
+});
+
+
+/*
 window.addEventListener('load', function () {
     var local = document.querySelector('video.local'),
         remote = document.querySelector('video.remote'),
@@ -68,3 +100,4 @@ window.addEventListener('load', function () {
 
 
 }, false);
+*/

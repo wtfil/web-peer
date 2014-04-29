@@ -1,7 +1,9 @@
 /*jshint maxlen: 1000*/
+/*global FileReader*/
 var PeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
 var SessionDescription = window.RTCSessionDescription || window.mozRTCSessionDescription || window.webkitRTCSessionDescription;
 var RTCIceCandidate = window.RTCIceCandidate || window.mozRTCIceCandidate || window.webkitRTCIceCandidate;
+var MAX_CHUNK_SIZE = 102400;
 
 var server = {
     iceServers: [
@@ -25,15 +27,102 @@ var constraints = {
     }
 };
 
+
+/**
+ * Handle events
+ */
+function EventEmiter() {
+    this._listeners = Object.create(null);
+}
+
+/**
+ * Emiting event
+ *
+ * @private
+ * @param {String} name of event
+ * @param {Mixed} data passed into handler
+ */
+EventEmiter.prototype._emit = function (name, data) {
+    if (this._listeners[name]) {
+        this._listeners[name].forEach(function (haldler) {
+            haldler(data);
+        });
+    }
+    return this;
+};
+
+/**
+ * Add subscriber
+ *
+ * @param {String} name of event
+ * @param {Function} haldler
+ */
+EventEmiter.prototype.on = function (name, haldler) {
+    if (!this._listeners[name]) {
+        this._listeners[name] = [];
+    }
+    this._listeners[name].push(haldler);
+    return this;
+};
+
+/**
+ * Creating empty file that can be filled with chunks
+ *
+ * @constructor
+ * @param {Object} options
+ * @param {Number} options.size
+ * @param {String} options.name
+ * @param {String} options.type
+ */ 
+function FileStream(options) {
+    this._loaded = 0;
+    this._buff = new ArrayBuffer(options.size);
+    this._view = new Uint8Array(this._buff);
+    this._size = options.size;
+    this._type = options.type;
+    this._name = options.name;
+    EventEmiter.call(this);
+}
+
+FileStream.prototype = Object.create(EventEmiter.prototype);
+FileStream.prototype.constructor = FileStream;
+
+
+/**
+ * Adding chunk to buffer
+ *
+ * @param {ArrayBuffer} buff
+ */
+FileStream.prototype.append = function (buff) {
+    var chunk = new Uint8Array(buff);
+    this._view.set(chunk, this._loaded);
+    this._loaded += buff.byteLength;
+    this._emit('progress', this._loaded / this._size);
+};
+
+/**
+ * Getting blob from stream
+ *
+ * @return {Blob} file
+ */
+FileStream.prototype.getBlob = function () {
+    var file = new Blob([this._buff], {type: this._type});
+    file.name = this._name;
+    return file;
+};
+
 function Peer() {
 
-    this._listeners = Object.create(null);
     this._messagePull = [];
     this._iceCandidate = null;
     this._files = {};
     this._createConnection();
+    EventEmiter.call(this);
 
 }
+
+Peer.prototype = Object.create(EventEmiter.prototype);
+Peer.prototype.constructor = Peer;
 
 Peer.prototype._createConnection = function () {
     var _this = this,
@@ -117,16 +206,8 @@ Peer.prototype.sync = function (opts) {
     }
 
     if (settings.candidate) {
-        /*if (pc.iceConnectionState === 'new') {*/
         this._iceCandidate = settings.candidate;
         this._pc.addIceCandidate(new RTCIceCandidate(settings.candidate));
-            /*} else {*/
-                /*this._pc.close();*/
-                /*this._createConnection();*/
-                /*setTimeout(function () {*/
-                    /*_this._pc.addIceCandidate(new RTCIceCandidate(settings.candidate));*/
-            /*}, 1000);*/
-            /*}*/
     }
 
     if (settings.answer) {
@@ -136,22 +217,6 @@ Peer.prototype.sync = function (opts) {
 
 };
 
-Peer.prototype._emit = function (name, data) {
-    if (this._listeners[name]) {
-        this._listeners[name].forEach(function (haldler) {
-            haldler(data);
-        });
-    }
-    return this;
-};
-
-Peer.prototype.on = function (name, haldler) {
-    if (!this._listeners[name]) {
-        this._listeners[name] = [];
-    }
-    this._listeners[name].push(haldler);
-    return this;
-};
 
 Peer.prototype.createChannel = function () {
     var options = {
@@ -175,21 +240,16 @@ Peer.prototype.createChannel = function () {
 
     channel.onmessage = this._onChannelMessage.bind(this);
 
-    console.log(channel);
     this._channel = channel;
     this.invite();
 };
 
 Peer.prototype._onChannelMessage = function (e) {
-    var data = e.data;
+    var data = e.data,
+        file;
 
     if (data instanceof ArrayBuffer) {
-        var chunk = new Uint8Array(data),
-            all = new Uint8Array(this._lastFile.buff);
-
-        all.set(chunk, this._lastFile.loaded);
-        this._lastFile.loaded += data.byteLength;
-        return;
+        return this._lastFile.append(data);
     }
 
     data = JSON.parse(data);
@@ -200,15 +260,11 @@ Peer.prototype._onChannelMessage = function (e) {
 
         // TODO constant
         if (data.status === 'started') {
-            this._files[data.file] = {
-                loaded: 0,
-                type: data.type,
-                buff: new ArrayBuffer(data.size)
-            };
-            this._lastFile = this._files[data.file];
+            file = new FileStream(data);
+            this._lastFile = this._files[data.file] = file;
+            this._emit('new file', file);
         } else if (data.status === 'finished') {
-            var file = new Blob([this._lastFile.buff], {type: this._lastFile.type});
-            this._emit('file', file);
+            this._emit('file', this._lastFile.getBlob());
         }
 
     }
@@ -230,7 +286,6 @@ Peer.prototype.send = function (data, asIs) {
     if (asIs) {
         message = JSON.stringify(data);
     }
-    console.log(message);
 
     if (!this._channel) {
         this.createChannel();
@@ -244,22 +299,18 @@ Peer.prototype.send = function (data, asIs) {
 };
 
 Peer.prototype.sendFile = function (file) {
-    /*global FileReader*/
     var reader = new FileReader(),
         id = Date.now() + Math.random(),
         loaddedBefore = 0,
-        maxSize = 5000,
         _this = this;
 
     reader.readAsArrayBuffer(file);
-    /*console.log(reader, file);*/
-    /*return;*/
     reader.onprogress = function (e) {
         var loaded = e.loaded,
             chunk, index;
 
-        for (index = loaddedBefore; index < loaded; index += maxSize) {
-            chunk = reader.result.slice(index, index + maxSize);
+        for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
+            chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
             _this.send(chunk);
         }
 
