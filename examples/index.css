@@ -1,0 +1,18 @@
+video
+{
+    width: 30px;
+    height: 30px;
+}
+
+.messages
+{
+    border: 1px solid #ddd;
+    height: 100px;
+    overflow: scroll;
+}
+
+.input
+{
+    width: 100%;
+    box-sizing: border-box;
+}

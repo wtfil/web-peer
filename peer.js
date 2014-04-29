@@ -5,13 +5,15 @@
     var PeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
     var SessionDescription = window.RTCSessionDescription || window.mozRTCSessionDescription || window.webkitRTCSessionDescription;
     var RTCIceCandidate = window.RTCIceCandidate || window.mozRTCIceCandidate || window.webkitRTCIceCandidate;
-    var MAX_CHUNK_SIZE = 102400;
+    var MAX_CHUNK_SIZE = 102400,
+        STATUS_START = 'started',
+        STATUS_END = 'finished';
 
     var server = {
         iceServers: [
-            {url: "stun:23.21.150.121"},
-            {url: "stun:stun.l.google.com:19302"},
-            {url: "turn:numb.viagenie.ca", credential: "webrtcdemo", username: "louis%40mozilla.com"}
+            {url: 'stun:23.21.150.121'},
+            {url: 'stun:stun.l.google.com:19302'},
+            {url: 'turn:numb.viagenie.ca', credential: 'webrtcdemo', username: 'louis%40mozilla.com'}
         ]
     };
 
@@ -78,8 +80,7 @@
      */ 
     function FileStream(options) {
         this._loaded = 0;
-        this._buff = new ArrayBuffer(options.size);
-        this._view = new Uint8Array(this._buff);
+        this._chunks = [];
         this._size = options.size;
         this._type = options.type;
         this._name = options.name;
@@ -96,10 +97,12 @@
      * @param {ArrayBuffer} buff
      */
     FileStream.prototype.append = function (buff) {
-        var chunk = new Uint8Array(buff);
-        this._view.set(chunk, this._loaded);
+        this._chunks.push(buff);
         this._loaded += buff.byteLength;
         this._emit('progress', this._loaded / this._size);
+        if (this._loaded >= this._size) {
+            this._emit('finished');
+        }
     };
 
     /**
@@ -108,7 +111,7 @@
      * @return {Blob} file
      */
     FileStream.prototype.getBlob = function () {
-        var file = new Blob([this._buff], {type: this._type});
+        var file = new Blob(this._chunks, {type: this._type});
         file.name = this._name;
         return file;
     };
@@ -281,12 +284,11 @@
             this._emit('data', e.data.message);
         } else if (data.file) {
 
-            // TODO constant
-            if (data.status === 'started') {
+            if (data.status === STATUS_START) {
                 file = new FileStream(data);
                 this._lastFile = this._files[data.file] = file;
                 this._emit('new file', file);
-            } else if (data.status === 'finished') {
+            } else if (data.status === STATUS_END) {
                 this._emit('file', this._lastFile.getBlob());
             }
 
@@ -326,7 +328,12 @@
         if ('open' !== this._channel.readyState) {
             this._messagePull.push(message);
         } else {
-            this._channel.send(message);
+            try {
+                this._channel.send(message);
+            } catch(e) {
+                //TODO
+                this._emit('error', e);
+            }
         }
     };
 
@@ -360,19 +367,25 @@
                 name: file.name,
                 size: file.size,
                 type: file.type,
-                status: 'started'
+                status: STATUS_START
             }, true);
         };
 
         reader.onloadend = function () {
             _this.send({
                 file: id,
-                status: 'finished'
+                status: STATUS_END
             }, true);
         };
     };
 
-    //TOOD modules
-    window.Peer = Peer;
+    /*global define*/
+    if (typeof module === 'object' && typeof module.exports === 'object') {
+        module.exports = Peer;
+    } else if (typeof define === 'function' && define.amd) {
+        define(Peer);
+    } else {
+        window.Peer = Peer;
+    }
 
 }(window));
