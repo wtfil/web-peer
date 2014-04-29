@@ -14,7 +14,6 @@ var server = {
 var options = {
     optional: [
         {DtlsSrtpKeyAgreement: true},
-        {RtpDataChannels: true}
     ]
 };
 
@@ -31,6 +30,7 @@ function Peer() {
     this._listeners = Object.create(null);
     this._messagePull = [];
     this._iceCandidate = null;
+    this._files = {};
     this._createConnection();
 
 }
@@ -155,15 +155,18 @@ Peer.prototype.on = function (name, haldler) {
 
 Peer.prototype.createChannel = function () {
     var options = {
-        reliable: false,
+        reliable: true,
     },
         _this = this,
         channel = this._pc.createDataChannel('myLabel', options);
 
     channel.onopen = function () {
-        _this._messagePull.forEach(function (message) {
-            channel.send(message);
-        });
+        channel.binaryType = 'arraybuffer';
+        setTimeout(function () {
+            _this._messagePull.forEach(function (message) {
+                channel.send(message);
+            });
+        }, 1000);
     };
 
     channel.onerror = function () {
@@ -172,12 +175,44 @@ Peer.prototype.createChannel = function () {
 
     channel.onmessage = this._onChannelMessage.bind(this);
 
+    console.log(channel);
     this._channel = channel;
     this.invite();
 };
 
 Peer.prototype._onChannelMessage = function (e) {
-    this._emit('data', e.data);
+    var data = e.data;
+
+    if (data instanceof ArrayBuffer) {
+        var chunk = new Uint8Array(data),
+            all = new Uint8Array(this._lastFile.buff);
+
+        all.set(chunk, this._lastFile.loaded);
+        this._lastFile.loaded += data.byteLength;
+        return;
+    }
+
+    data = JSON.parse(data);
+
+    if (data.message) {
+        this._emit('data', e.data.message);
+    } else if (data.file) {
+
+        // TODO constant
+        if (data.status === 'started') {
+            this._files[data.file] = {
+                loaded: 0,
+                type: data.type,
+                buff: new ArrayBuffer(data.size)
+            };
+            this._lastFile = this._files[data.file];
+        } else if (data.status === 'finished') {
+            var file = new Blob([this._lastFile.buff], {type: this._lastFile.type});
+            this._emit('file', file);
+        }
+
+    }
+
 };
 
 Peer.prototype.addStream = function (stream) {
@@ -185,14 +220,66 @@ Peer.prototype.addStream = function (stream) {
     this.invite();
 };
 
+// TODO remove asIs
+Peer.prototype.send = function (data, asIs) {
+    var message = data instanceof ArrayBuffer ? data : JSON.stringify({
+        message: data
+    });
 
-Peer.prototype.send = function (data) {
+    // TODO remove asIs
+    if (asIs) {
+        message = JSON.stringify(data);
+    }
+    console.log(message);
+
     if (!this._channel) {
         this.createChannel();
     }
+
     if ('open' !== this._channel.readyState) {
-        this._messagePull.push(data);
+        this._messagePull.push(message);
     } else {
-        this._channel.send(data);
+        this._channel.send(message);
     }
+};
+
+Peer.prototype.sendFile = function (file) {
+    /*global FileReader*/
+    var reader = new FileReader(),
+        id = Date.now() + Math.random(),
+        loaddedBefore = 0,
+        maxSize = 5000,
+        _this = this;
+
+    reader.readAsArrayBuffer(file);
+    /*console.log(reader, file);*/
+    /*return;*/
+    reader.onprogress = function (e) {
+        var loaded = e.loaded,
+            chunk, index;
+
+        for (index = loaddedBefore; index < loaded; index += maxSize) {
+            chunk = reader.result.slice(index, index + maxSize);
+            _this.send(chunk);
+        }
+
+        loaddedBefore = e.loaded;
+    };
+
+    reader.onloadstart = function () {
+        _this.send({
+            file: id,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            status: 'started'
+        }, true);
+    };
+
+    reader.onloadend = function () {
+        _this.send({
+            file: id,
+            status: 'finished'
+        }, true);
+    };
 };
