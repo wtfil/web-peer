@@ -5,7 +5,9 @@
     var PeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
     var SessionDescription = window.RTCSessionDescription || window.mozRTCSessionDescription || window.webkitRTCSessionDescription;
     var RTCIceCandidate = window.RTCIceCandidate || window.mozRTCIceCandidate || window.webkitRTCIceCandidate;
-    var MAX_CHUNK_SIZE = 102400,
+    var requestFileSystem = window.webkitRequestFileSystem || window.requestFileSystem;
+    /*var MAX_CHUNK_SIZE = 102400,*/
+    var MAX_CHUNK_SIZE = 152400,
         STATUS_START = 'started',
         STATUS_END = 'finished';
 
@@ -83,7 +85,7 @@
         this._chunks = [];
         this._size = options.size;
         this._type = options.type;
-        this._name = options.name;
+        this.name = options.name;
         EventEmiter.call(this);
     }
 
@@ -101,8 +103,40 @@
         this._loaded += buff.byteLength;
         this._emit('progress', this._loaded / this._size);
         if (this._loaded >= this._size) {
-            this._emit('finished');
+            this._createUrl();
         }
+    };
+
+
+    Object.defineProperty(FileStream.prototype, 'url', {
+        get: function () {
+            if (!this._url) {
+                throw new Error('.url is not avaliable until file loads');
+            }
+            return this._url;
+        }
+    });
+
+
+    FileStream.prototype._createUrl = function () {
+        var blob = this.getBlob(),
+            onError = this._emit.bind(this, 'error'),
+            _this = this;
+
+        requestFileSystem(window.TEMPORARY, blob.size, function (fs) {
+            fs.root.getFile(_this.name, {create: true}, function (fileEntry) {
+
+                _this._url = fileEntry.toURL();
+                fileEntry.createWriter(function (writer) {
+                    writer.onerror = onError;
+                    writer.onwriteend = function () {
+                        _this._emit('load');
+                    };
+                    writer.write(blob);
+                }, onError);
+
+            }, onError);
+        }, onError);
     };
 
     /**
@@ -111,9 +145,7 @@
      * @return {Blob} file
      */
     FileStream.prototype.getBlob = function () {
-        var file = new Blob(this._chunks, {type: this._type});
-        file.name = this._name;
-        return file;
+        return new Blob(this._chunks, {type: this._type});
     };
 
     
@@ -252,9 +284,7 @@
 
         channel.onopen = function () {
             channel.binaryType = 'arraybuffer';
-            _this._messagePull.forEach(function (message) {
-                channel.send(message);
-            });
+            _this._tryToSendMessages();
         };
 
         channel.onerror = function () {
@@ -281,15 +311,15 @@
         data = JSON.parse(data);
 
         if (data.message) {
-            this._emit('data', e.data.message);
+            this._emit('data', data.message);
         } else if (data.file) {
 
             if (data.status === STATUS_START) {
                 file = new FileStream(data);
                 this._lastFile = this._files[data.file] = file;
-                this._emit('new file', file);
+                this._emit('file', file);
             } else if (data.status === STATUS_END) {
-                this._emit('file', this._lastFile.getBlob());
+                this._emit('file load', this._lastFile.getBlob());
             }
 
         }
@@ -325,14 +355,35 @@
             this._createChannel();
         }
 
-        if ('open' !== this._channel.readyState) {
-            this._messagePull.push(message);
-        } else {
+        this._messagePull.push(message);
+
+        if ('open' === this._channel.readyState) {
+            this._tryToSendMessages();
+        }
+
+    };
+
+    Peer.prototype._tryToSendMessages = function (isRetry) {
+        var pull = this._messagePull,
+            message;
+        
+        if (!isRetry && this._messageRetryTimer) {
+            return;
+        }
+
+        if (this._messageRetryTimer) {
+            clearTimeout(this._messageRetryTimer);
+            this._messageRetryTimer = null;
+        }
+        
+        while((message = pull.shift())) {
             try {
                 this._channel.send(message);
             } catch(e) {
-                //TODO
-                this._emit('error', e);
+                message.id = Math.random();
+                pull.unshift(message);
+                this._messageRetryTimer = setTimeout(this._tryToSendMessages.bind(this, true), 300);
+                break;
             }
         }
     };

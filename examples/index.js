@@ -8,19 +8,6 @@ peer.on('error', function (e) {
     throw e;
 });
 
-peer.on('data', function (data) {
-    console.log('data from peer: ', data);
-});
-
-
-// locking for someone
-socket.emit('find');
-
-// if create channel if someone look at me
-socket.on('find', function () {
-    console.log('socket on find');
-});
-
 // syncing peers
 socket.on('sync', function (data) {
     console.log('socket on sync', data);
@@ -31,28 +18,24 @@ peer.on('sync', function (data) {
     socket.emit('sync', data);
 });
 
+
 window.addEventListener('load', function () {
     var input = document.querySelector('input[type=file]'),
         progress = document.querySelector('progress'),
         link = document.querySelector('a');
 
-    peer.on('new file', function (file) {
-        console.time('file');
+    peer.on('file', function (file) {
         file.on('progress', function (val) {
             progress.value = val;
         });
-    });
-
-    peer.on('file', function (blob) {
-        console.timeEnd('file');
-        var reader = new FileReader();
-
-        reader.readAsDataURL(blob); 
-        reader.onloadend = function () {
-            link.innerHTML = blob.name;
-            link.download = blob.name;
-            link.href = reader.result;
-        };
+        file.on('load', function () {
+            link.download = file.name;
+            link.innerHTML = file.name;
+            link.href = file.url;
+        });
+        file.on('error', function (e) {
+            throw e;
+        });
     });
 
     input.addEventListener('change', function () {
@@ -63,7 +46,6 @@ window.addEventListener('load', function () {
 });
 
 
-/*
 window.addEventListener('load', function () {
     var local = document.querySelector('video.local'),
         remote = document.querySelector('video.remote'),
@@ -75,29 +57,31 @@ window.addEventListener('load', function () {
         video.play();
     }
 
-    function addMessage(message) {
-        messages.innerHTML += (new Date()).toDateString() + ': ' + message + '<br/>';
-    }
-
-    getUserMedia({ audio: true, video: true }, function (stream) {
-        setStream(local, stream);
-        peer.addStream(stream);
-    }, console.error.bind(console));
-
     peer.on('stream', setStream.bind(null, remote));
 
-    peer.on('data', addMessage);
+    document.querySelector('.video-on').addEventListener('click', function () {
+        getUserMedia({ audio: true, video: true }, function (stream) {
+            setStream(local, stream);
+            peer.addStream(stream);
+        }, console.error.bind(console));
+    }, true);
+
+    function addMessage(message, me) {
+        messages.innerHTML += (me ? '>>: ' : '<<: ') + message + '<br/>';
+    }
+
+    peer.on('data', function (data) {
+        addMessage(data, false);
+    });
 
     input.addEventListener('keydown', function (e) {
-        if ('Enter' === e.keyIdentifier && e.metaKey) {
+        if ('Enter' === e.keyIdentifier) {
             var val = input.value;
             input.value = '';
             peer.send(val);
-            addMessage(val);
+            addMessage(val, true);
+            e.preventDefault();
         }
     }, false);
 
-
-
 }, false);
-*/
