@@ -18,7 +18,6 @@ peer.on('sync', function (data) {
     socket.emit('sync', data);
 });
 
-
 window.addEventListener('load', function () {
     var input = document.querySelector('input[type=file]'),
         progress = document.querySelector('progress'),
@@ -70,15 +69,15 @@ window.addEventListener('load', function () {
         messages.innerHTML += (me ? '>>: ' : '<<: ') + message + '<br/>';
     }
 
-    peer.on('data', function (data) {
-        addMessage(data, false);
+    peer.messages.on('chat', function (text) {
+        addMessage(text, false);
     });
 
     input.addEventListener('keydown', function (e) {
         if ('Enter' === e.keyIdentifier) {
             var val = input.value;
             input.value = '';
-            peer.send(val);
+            peer.send('chat', val);
             addMessage(val, true);
             e.preventDefault();
         }

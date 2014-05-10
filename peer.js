@@ -6,8 +6,8 @@
     var SessionDescription = window.RTCSessionDescription || window.mozRTCSessionDescription || window.webkitRTCSessionDescription;
     var RTCIceCandidate = window.RTCIceCandidate || window.mozRTCIceCandidate || window.webkitRTCIceCandidate;
     var requestFileSystem = window.webkitRequestFileSystem || window.requestFileSystem;
-    /*var MAX_CHUNK_SIZE = 102400,*/
     var MAX_CHUNK_SIZE = 152400,
+        RETRY_INTERVAL = 300,
         STATUS_START = 'started',
         STATUS_END = 'finished';
 
@@ -44,11 +44,10 @@
     /**
      * Emiting event
      *
-     * @private
      * @param {String} name of event
      * @param {Mixed} data passed into handler
      */
-    EventEmiter.prototype._emit = function (name, data) {
+    EventEmiter.prototype.emit = function (name, data) {
         if (this._listeners[name]) {
             this._listeners[name].forEach(function (haldler) {
                 haldler(data);
@@ -68,6 +67,26 @@
             this._listeners[name] = [];
         }
         this._listeners[name].push(haldler);
+        return this;
+    };
+
+    /**
+     * Remove subscriber(s)
+     *
+     * @param {String} [name] if not set all handlers will removed
+     * @param {Function} [handler] if not set all handler for <name> event will removed
+     * @return {EventEmiter} this
+     */
+    EventEmiter.prototype.off = function (name, handler) {
+        if (!arguments.legth) {
+            this._listeners = Object.create(null);
+        } else if (!handler) {
+            this._listeners[name] = null;
+        } else {
+            this._listeners[name] = this._listeners[name].filter(function (fn) {
+                return fn !== handler;
+            });
+        }
         return this;
     };
 
@@ -101,7 +120,7 @@
     FileStream.prototype.append = function (buff) {
         this._chunks.push(buff);
         this._loaded += buff.byteLength;
-        this._emit('progress', this._loaded / this._size);
+        this.emit('progress', this._loaded / this._size);
         if (this._loaded >= this._size) {
             this._createUrl();
         }
@@ -120,7 +139,7 @@
 
     FileStream.prototype._createUrl = function () {
         var blob = this.getBlob(),
-            onError = this._emit.bind(this, 'error'),
+            onError = this.emit.bind(this, 'error'),
             _this = this;
 
         requestFileSystem(window.TEMPORARY, blob.size, function (fs) {
@@ -130,7 +149,7 @@
                 fileEntry.createWriter(function (writer) {
                     writer.onerror = onError;
                     writer.onwriteend = function () {
-                        _this._emit('load');
+                        _this.emit('load');
                     };
                     writer.write(blob);
                 }, onError);
@@ -158,6 +177,7 @@
         this._iceCandidate = null;
         this._files = {};
         this._createConnection();
+        this.messages = new EventEmiter();
         EventEmiter.call(this);
     }
 
@@ -171,7 +191,7 @@
         try {
             pc = new PeerConnection(server, options);
         } catch(e) {
-            return this._emit('error', e);
+            return this.emit('error', e);
         }
         this._pc = pc;
         this._channel = null;
@@ -181,10 +201,10 @@
                 return;
             }
             pc.onicecandidate = null;
-            _this._emit('sync', {candidate: e.candidate});
+            _this.emit('sync', {candidate: e.candidate});
         };
         pc.onaddstream  = function (stream) {
-            _this._emit('stream', stream.stream);
+            _this.emit('stream', stream.stream);
         };
         pc.ondatachannel = function (e) {
             var channel = e.channel;
@@ -204,9 +224,9 @@
         this._pc.createOffer(
             function (offer) {
                 _this._pc.setLocalDescription(offer);
-                _this._emit('sync', {offer: offer});
+                _this.emit('sync', {offer: offer});
             },
-            this._emit.bind(this, 'error'),
+            this.emit.bind(this, 'error'),
             constraints
         );
 
@@ -228,7 +248,7 @@
 
         this.sync(settings);
         this._pc.addIceCandidate(new RTCIceCandidate(this._iceCandidate));
-        this._emit('reconnect');
+        this.emit('reconnect');
     };
 
     /**
@@ -249,9 +269,9 @@
                 pc.createAnswer(
                     function (answer) {
                         pc.setLocalDescription(answer);
-                        _this._emit('sync', {answer: answer});
+                        _this.emit('sync', {answer: answer});
                     },
-                    _this._emit.bind(_this, 'error'),
+                    _this.emit.bind(_this, 'error'),
                     constraints
                 );
 
@@ -311,15 +331,15 @@
         data = JSON.parse(data);
 
         if (data.message) {
-            this._emit('data', data.message);
+            this.messages.emit(data.message, data.data);
         } else if (data.file) {
 
             if (data.status === STATUS_START) {
                 file = new FileStream(data);
                 this._lastFile = this._files[data.file] = file;
-                this._emit('file', file);
+                this.emit('file', file);
             } else if (data.status === STATUS_END) {
-                this._emit('file load', this._lastFile.getBlob());
+                this.emit('file load', this._lastFile.getBlob());
             }
 
         }
@@ -337,30 +357,36 @@
     };
 
     /**
-     * Send data to peer
-     * @param {Mixed} data
+     * Sending json or ArrayBuffer to peer
+     * @private
+     *
+     * @param {ArrayBuffer|Object} message
      */
-    // TODO remove asIs
-    Peer.prototype.send = function (data, asIs) {
-        var message = data instanceof ArrayBuffer ? data : JSON.stringify({
-            message: data
-        });
-
-        // TODO remove asIs
-        if (asIs) {
-            message = JSON.stringify(data);
-        }
-
+    Peer.prototype._send = function (message) {
         if (!this._channel) {
             this._createChannel();
         }
+
+        message = message instanceof ArrayBuffer ? message : JSON.stringify(message);
 
         this._messagePull.push(message);
 
         if ('open' === this._channel.readyState) {
             this._tryToSendMessages();
         }
+    };
 
+    /**
+     * Send data to peer
+     * @param {String} name
+     * @param {Mixed} data
+     */
+    Peer.prototype.send = function (name, data) {
+        this._send({
+            message: name,
+            data: data
+        });
+        return this;
     };
 
     Peer.prototype._tryToSendMessages = function (isRetry) {
@@ -382,7 +408,7 @@
             } catch(e) {
                 message.id = Math.random();
                 pull.unshift(message);
-                this._messageRetryTimer = setTimeout(this._tryToSendMessages.bind(this, true), 300);
+                this._messageRetryTimer = setTimeout(this._tryToSendMessages.bind(this, true), RETRY_INTERVAL);
                 break;
             }
         }
@@ -406,14 +432,14 @@
 
             for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
                 chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
-                _this.send(chunk);
+                _this._send(chunk);
             }
 
             loaddedBefore = e.loaded;
         };
 
         reader.onloadstart = function () {
-            _this.send({
+            _this._send({
                 file: id,
                 name: file.name,
                 size: file.size,
@@ -423,7 +449,7 @@
         };
 
         reader.onloadend = function () {
-            _this.send({
+            _this._send({
                 file: id,
                 status: STATUS_END
             }, true);
