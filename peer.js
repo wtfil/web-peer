@@ -111,7 +111,6 @@
     FileStream.prototype = Object.create(EventEmiter.prototype);
     FileStream.prototype.constructor = FileStream;
 
-
     /**
      * Adding chunk to buffer
      *
@@ -136,7 +135,6 @@
         }
     });
 
-
     FileStream.prototype._createUrl = function () {
         var blob = this.getBlob(),
             onError = this.emit.bind(this, 'error'),
@@ -146,6 +144,7 @@
             fs.root.getFile(_this.name, {create: true}, function (fileEntry) {
 
                 _this._url = fileEntry.toURL();
+                _this.emit('url', _this._url);
                 fileEntry.createWriter(function (writer) {
                     writer.onerror = onError;
                     writer.onwriteend = function () {
@@ -180,6 +179,9 @@
         this.messages = new EventEmiter();
         EventEmiter.call(this);
     }
+    
+    // alowing  reuse event emiter
+    Peer.EventEmiter = EventEmiter;
 
     Peer.prototype = Object.create(EventEmiter.prototype);
     Peer.prototype.constructor = Peer;
