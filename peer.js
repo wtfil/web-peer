@@ -411,6 +411,7 @@
                 message.id = Math.random();
                 pull.unshift(message);
                 this._messageRetryTimer = setTimeout(this._tryToSendMessages.bind(this, true), RETRY_INTERVAL);
+                this._emit('error', e);
                 break;
             }
         }
