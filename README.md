@@ -37,81 +37,101 @@ socket.on('sync', peer.sync.bind(peer));
 
 ### Peer()
 
-Creates new peer
+creates new peer
 
 ```js
 var peer = new Peer();
 ```
 
+### Peer#sync(options)
+
+Two peer should sync with some signaling mechanism. This is only function needed for that.
+
+Any peer emit ```sync``` event when it require to signale to another peer
+
+```js
+peer.on('sync', function (options) {
+    someHowSendToAnotherPeer(options);
+});
+```
+
+another peer waing until ```sync``` function will be callen
+
+```js
+someHowOnGetSyncMessage(function (options) {
+    peer.sync(options);
+});
+```
+
 ### Peer#send(messageName, messageData)
     
-    send message
-    
-    ```js
-    peer.send('to-chat', {name: 'boss'});
-    ```
-    
-    on another side
+send message
 
-    ```js
-    peer.messages.on('to-chat', function (info) {
-        console.log('%s joined to chat', info.name); // boss joined to chat
-    });
-    ```
+```js
+peer.send('to-chat', {name: 'boss'});
+```
+
+on another side
+
+```js
+peer.messages.on('to-chat', function (info) {
+    console.log('%s joined to chat', info.name); // boss joined to chat
+});
+```
 
 ### Peer#addStream(mediaStream)
 
-    send [```MediaStream```](https://developer.mozilla.org/en-US/docs/Web/API/MediaStream)
+send [```MediaStream```](https://developer.mozilla.org/en-US/docs/Web/API/MediaStream)
 
-    ```js
-    getUserMedia({ audio: true, video: true }, function (stream) {
-        peer.addStream(stream);
-    }, console.error.bind(console));
-    ```
+```js
+getUserMedia({ audio: true, video: true }, function (stream) {
+    peer.addStream(stream);
+}, console.error.bind(console));
+```
 
-    on another side
+on another side
 
-    ```js
-    peer.on('stream', function (mediaStream) {
-        var video = document.querySelector('video');
-        video.src = URL.createObjectURL(mediaStream);
-        video.play();
-    });
+```js
+peer.on('stream', function (mediaStream) {
+    var video = document.querySelector('video');
+    video.src = URL.createObjectURL(mediaStream);
+    video.play();
+});
     ```
 
 ### Peer#sendFile(file)
     
-    send [```File```](https://developer.mozilla.org/en-US/docs/Web/API/File)
-    
-    ```js
-    var input = document.querySelector('input[type=file]');
+send [```File```](https://developer.mozilla.org/en-US/docs/Web/API/File)
 
-    input.addEventListener('change', function () {
-        if (input.files.length) {
-             peer.sendFile(input.files[0]);
-        }
+```js
+var input = document.querySelector('input[type=file]');
+
+input.addEventListener('change', function () {
+    if (input.files.length) {
+         peer.sendFile(input.files[0]);
+    }
+});
+```
+
+on another side
+
+```
+// fileStream is instanceof private constructor ```FileStream``` which makes easier work with file
+peer.on('file', function (fileStream) {
+    // file will load only after you allow it
+    file.load();
+
+    file.on('progress', function (progress) {
+        document.querySelector('progress').value = progress;
     });
-    ```
 
-    on another side
-
-    ```
-    // fileStream is instanceof private constructor ```FileStream``` which makes easier work with file
-    peer.on('file', function (fileStream) {
-        // file will load only after you allow it
-        file.load();
-
-        file.on('progress', function (progress) {
-            document.querySelector('progress').value = progress;
-        });
-
-        file.on('url', function () {
-            var link = document.querySelector('a');
-            a.download = file.name;
-            a.innerHTML = file.name;
-            a.href = file.url;
-        });
+    file.on('url', function () {
+        var link = document.querySelector('a');
+        a.download = file.name;
+        a.innerHTML = file.name;
+        a.href = file.url;
     });
+});
     ```
 
 ### Peer events
@@ -123,16 +143,16 @@ var peer = new Peer();
 
 ### FileStream#load()
     
-    start load file
+start load file
 
 ### FileStream#getBlob()
     
-    get file blob
+get file blob
 
 ### FileStream#url
     
-    url to [filesystem](https://developer.mozilla.org/en-US/docs/WebGuide/API/File_System) file location
+url to [filesystem](https://developer.mozilla.org/en-US/docs/WebGuide/API/File_System) file location
 
 ### FileStream#name
     
-    file name
+file name
