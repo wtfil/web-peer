@@ -48,7 +48,6 @@ var peer = new Peer();
 Two peer should sync with some signaling mechanism. This is only function needed for that.
 
 Any peer emit ```sync``` event when it require to signale to another peer
-
 ```js
 peer.on('sync', function (options) {
     someHowSendToAnotherPeer(options);
@@ -56,7 +55,6 @@ peer.on('sync', function (options) {
 ```
 
 another peer waing until ```sync``` function will be callen
-
 ```js
 someHowOnGetSyncMessage(function (options) {
     peer.sync(options);
@@ -66,13 +64,11 @@ someHowOnGetSyncMessage(function (options) {
 ### Peer#send(messageName, messageData)
     
 send message
-
 ```js
 peer.send('to-chat', {name: 'boss'});
 ```
 
 on another side
-
 ```js
 peer.messages.on('to-chat', function (info) {
     console.log('%s joined to chat', info.name); // boss joined to chat
@@ -82,7 +78,6 @@ peer.messages.on('to-chat', function (info) {
 ### Peer#addStream(mediaStream)
 
 send [```MediaStream```](https://developer.mozilla.org/en-US/docs/Web/API/MediaStream)
-
 ```js
 getUserMedia({ audio: true, video: true }, function (stream) {
     peer.addStream(stream);
@@ -90,7 +85,6 @@ getUserMedia({ audio: true, video: true }, function (stream) {
 ```
 
 on another side
-
 ```js
 peer.on('stream', function (mediaStream) {
     var video = document.querySelector('video');
@@ -102,7 +96,6 @@ peer.on('stream', function (mediaStream) {
 ### Peer#sendFile(file)
     
 send [```File```](https://developer.mozilla.org/en-US/docs/Web/API/File)
-
 ```js
 var input = document.querySelector('input[type=file]');
 
@@ -114,8 +107,7 @@ input.addEventListener('change', function () {
 ```
 
 on another side
-
-```
+```js
 // fileStream is instanceof private constructor ```FileStream``` which makes easier work with file
 peer.on('file', function (fileStream) {
     // file will load only after you allow it
