@@ -1,0 +1,5 @@
+{
+    "name": "web-peer",
+    "version": "0.0.4",
+    "main": "peer.js"
+}

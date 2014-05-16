@@ -24,10 +24,11 @@ window.addEventListener('load', function () {
         link = document.querySelector('a');
 
     peer.on('file', function (file) {
+        file.load();
         file.on('progress', function (val) {
             progress.value = val;
         });
-        file.on('load', function () {
+        file.on('url', function () {
             link.download = file.name;
             link.innerHTML = file.name;
             link.href = file.url;

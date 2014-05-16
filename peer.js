@@ -8,6 +8,7 @@
     var requestFileSystem = window.webkitRequestFileSystem || window.requestFileSystem;
     var MAX_CHUNK_SIZE = 152400,
         RETRY_INTERVAL = 300,
+        STATUS_NEW = 'new',
         STATUS_START = 'started',
         STATUS_END = 'finished';
 
@@ -123,6 +124,14 @@
         if (this._loaded >= this._size) {
             this._createUrl();
         }
+        return this;
+    };
+
+    /**
+     * Starting load file
+     */
+    FileStream.prototype.load = function () {
+        return this.emit('start');
     };
 
 
@@ -174,7 +183,10 @@
     function Peer() {
         this._messagePull = [];
         this._iceCandidate = null;
-        this._files = {};
+        this._files = {
+            received: {},
+            sended: {}
+        };
         this._createConnection();
         this.messages = new EventEmiter();
         EventEmiter.call(this);
@@ -319,11 +331,38 @@
         this._createOffer();
     };
 
+    Peer.prototype._sendFile = function (file) {
+        var reader = new FileReader(),
+            loaddedBefore = 0,
+            _this = this;
+
+        reader.readAsArrayBuffer(file);
+        reader.onprogress = function (e) {
+            var loaded = e.loaded,
+                chunk, index;
+
+            for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
+                chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
+                _this._send(chunk);
+            }
+
+            loaddedBefore = e.loaded;
+        };
+
+        reader.onloadend = function () {
+            _this._send({
+                file: id,
+                status: STATUS_END
+            }, true);
+        };
+    };
+
     /**
      * Data channel message handler
      */
     Peer.prototype._onChannelMessage = function (e) {
         var data = e.data,
+            _this = this,
             file;
 
         if (data instanceof ArrayBuffer) {
@@ -333,15 +372,29 @@
         data = JSON.parse(data);
 
         if (data.message) {
-            this.messages.emit(data.message, data.data);
-        } else if (data.file) {
+            return this.messages.emit(data.message, data.data);
+        }
+        if (data.file) {
+            switch (data.status) {
+                case STATUS_NEW:
+                    file = new FileStream(data);
+                    file.on('start', function () {
+                        _this._send({
+                            file: data.file,
+                            status: STATUS_START
+                        });
+                    });
+                    this.emit('file', file);
+                    this._lastFile = this._files.received[data.file] = file;
+                    break;
 
-            if (data.status === STATUS_START) {
-                file = new FileStream(data);
-                this._lastFile = this._files[data.file] = file;
-                this.emit('file', file);
-            } else if (data.status === STATUS_END) {
-                this.emit('file load', this._lastFile.getBlob());
+                case STATUS_START:
+                    this._sendFile(this._files.sended[data.file]);
+                    break;
+
+                case STATUS_END:
+                    this.emit('file load', this._lastFile.getBlob());
+                    break;
             }
 
         }
@@ -411,7 +464,7 @@
                 message.id = Math.random();
                 pull.unshift(message);
                 this._messageRetryTimer = setTimeout(this._tryToSendMessages.bind(this, true), RETRY_INTERVAL);
-                this._emit('error', e);
+                this.emit('error', e);
                 break;
             }
         }
@@ -423,40 +476,15 @@
      * @param {File} file
      */
     Peer.prototype.sendFile = function (file) {
-        var reader = new FileReader(),
-            id = Date.now() + Math.random(),
-            loaddedBefore = 0,
-            _this = this;
-
-        reader.readAsArrayBuffer(file);
-        reader.onprogress = function (e) {
-            var loaded = e.loaded,
-                chunk, index;
-
-            for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
-                chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
-                _this._send(chunk);
-            }
-
-            loaddedBefore = e.loaded;
-        };
-
-        reader.onloadstart = function () {
-            _this._send({
-                file: id,
-                name: file.name,
-                size: file.size,
-                type: file.type,
-                status: STATUS_START
-            }, true);
-        };
-
-        reader.onloadend = function () {
-            _this._send({
-                file: id,
-                status: STATUS_END
-            }, true);
-        };
+        var id = Date.now() + Math.random();
+        this._files.sended[id] = file;
+        this._send({
+            file: id,
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            status: STATUS_NEW
+        });
     };
 
     /*global define*/
