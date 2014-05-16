@@ -91,7 +91,7 @@ peer.on('stream', function (mediaStream) {
     video.src = URL.createObjectURL(mediaStream);
     video.play();
 });
-    ```
+```
 
 ### Peer#sendFile(file)
     
