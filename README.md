@@ -18,7 +18,7 @@ Easy way to use WebRTC
 
 Web-peer provide only client-side interface for WebRTC. You should use some signaling mechanism.
 
-Example of using with [socket.id](http://socket.io/):
+Example of using with [socket.io](http://socket.io/):
 
 ```js
 var socket = require('socket.io-client').connect(window.location.host),
@@ -32,16 +32,16 @@ socket.on('sync', peer.sync.bind(peer));
 ```
 
 
-## Api
+## API
 
 
 ### Peer()
 
-    Creates new peer
+Creates new peer
 
-    ```js
-    var peer = new Peer();
-    ```
+```js
+var peer = new Peer();
+```
 
 ### Peer#send(messageName, messageData)
     
