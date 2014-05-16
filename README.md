@@ -124,7 +124,7 @@ peer.on('file', function (fileStream) {
         a.href = file.url;
     });
 });
-    ```
+```
 
 ### Peer events
 
