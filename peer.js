@@ -5,14 +5,14 @@
     var PeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
     var SessionDescription = window.RTCSessionDescription || window.mozRTCSessionDescription || window.webkitRTCSessionDescription;
     var RTCIceCandidate = window.RTCIceCandidate || window.mozRTCIceCandidate || window.webkitRTCIceCandidate;
-    var requestFileSystem = window.webkitRequestFileSystem || window.requestFileSystem;
+    var requestFileSystem = window.requestFileSystem ||  window.webkitRequestFileSystem || window.mozRequestFileSystem;
     var MAX_CHUNK_SIZE = 152400,
         RETRY_INTERVAL = 300,
         STATUS_NEW = 'new',
         STATUS_START = 'started',
         STATUS_END = 'finished';
 
-    var server = {
+    var peerServer = {
         iceServers: [
             {url: 'stun:23.21.150.121'},
             {url: 'stun:stun.l.google.com:19302'},
@@ -20,12 +20,17 @@
         ]
     };
 
-    var options = {
+    var peerOptions = {
         optional: [
-            {DtlsSrtpKeyAgreement: true},
+            {DtlsSrtpKeyAgreement: true}
         ]
     };
 
+    var channelOptions = {
+        reliable: true
+    };
+
+    
     var constraints = {
         optional: [],
         mandatory: {
@@ -203,7 +208,7 @@
             pc;
 
         try {
-            pc = new PeerConnection(server, options);
+            pc = new PeerConnection(peerServer, peerOptions);
         } catch(e) {
             return this.emit('error', e);
         }
@@ -310,11 +315,8 @@
      * Create data channel
      */
     Peer.prototype._createChannel = function () {
-        var options = {
-            reliable: true,
-        },
-            _this = this,
-            channel = this._pc.createDataChannel('myLabel', options);
+        var _this = this,
+            channel = this._pc.createDataChannel('myLabel', channelOptions);
 
         channel.onopen = function () {
             channel.binaryType = 'arraybuffer';
@@ -331,13 +333,18 @@
         this._createOffer();
     };
 
-    Peer.prototype._sendFile = function (file) {
+    Peer.prototype._sendFile = function (id) {
         var reader = new FileReader(),
+            file = this._files.sended[id]
             loaddedBefore = 0,
             _this = this;
 
         reader.readAsArrayBuffer(file);
         reader.onprogress = function (e) {
+            if (!reader.result) {
+                return;
+            }
+
             var loaded = e.loaded,
                 chunk, index;
 
@@ -350,6 +357,14 @@
         };
 
         reader.onloadend = function () {
+
+            var loaded = reader.result.byteLength;
+
+            for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
+                chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
+                _this._send(chunk);
+            }
+
             _this._send({
                 file: id,
                 status: STATUS_END
@@ -365,8 +380,18 @@
             _this = this,
             file;
 
+        console.log(data);
         if (data instanceof ArrayBuffer) {
             return this._lastFile.append(data);
+        }
+        if (data instanceof Blob) {
+            var fileReader = new FileReader(),
+                ar;
+            fileReader.onload = function() {
+                _this._lastFile.append(this.result);
+            };
+            fileReader.readAsArrayBuffer(data);
+            return;
         }
 
         data = JSON.parse(data);
@@ -389,7 +414,7 @@
                     break;
 
                 case STATUS_START:
-                    this._sendFile(this._files.sended[data.file]);
+                    this._sendFile(data.file);
                     break;
 
                 case STATUS_END:
