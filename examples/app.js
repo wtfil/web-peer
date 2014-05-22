@@ -11,9 +11,6 @@ server = http.Server(app.callback());
 io = io.listen(server);
 
 io.sockets.on('connection', function (socket) {
-    socket.on('find', function () {
-        socket.broadcast.emit('find');
-    });
     socket.on('sync', function (data) {
         socket.broadcast.emit('sync', data);
     });

@@ -7,8 +7,12 @@ Easy way to use WebRTC
 
 * Send ```MediaStreams``` (audio, video)
 * Send messages
-* Send files
+* Send files (only Chrome now)
 
+## What can not do
+
+* Send files to Firefox (temporary)
+* Good reconnect flow (temporary)
 
 ## Install
 
@@ -29,6 +33,18 @@ var socket = require('socket.io-client').connect(window.location.host),
 peer.on('error', console.error.bind(console));
 peer.on('sync', socket.emit.bind(socket, 'sync'));
 socket.on('sync', peer.sync.bind(peer));
+```
+
+and server.js
+```
+var io = require('socket.io');
+
+io.sockets.on('connection', function (socket) {
+    socket.on('sync', function (data) {
+        socket.broadcast.emit('sync', data);
+    });
+});
+io.listen(<your port>)
 ```
 
 
@@ -107,9 +123,8 @@ input.addEventListener('change', function () {
 ```
 
 on another side
-```js
-// fileStream is instanceof private constructor ```FileStream``` which makes easier work with file
-peer.on('file', function (fileStream) {
+// file is instanceof private constructor ```FileStream``` which makes easier work with file
+peer.on('file', function (file) {
     // file will load only after you allow it
     file.load();
 
@@ -128,9 +143,10 @@ peer.on('file', function (fileStream) {
 
 ### Peer events
 
-* ```error```
-* ```stream```
-* ```file```
+* ```error``` any error
+* ```stream``` new incoming ```MediaStream```
+* ```file``` new incoming file
+* ```sync``` request to use signaling mechanism to send data to another peer
 
 
 ### FileStream#load()
