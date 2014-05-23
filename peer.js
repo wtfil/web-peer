@@ -155,9 +155,7 @@
             _this = this;
 
         if (!requestFileSystem) {
-            console.time('create url');
             this._url = URL.createObjectURL(blob);
-            console.timeEnd('create url');
             _this.emit('url', this._url);
             _this.emit('load');
             return;
@@ -186,10 +184,7 @@
      * @return {Blob} file
      */
     FileStream.prototype.getBlob = function () {
-        console.time('blob');
-        var r = new Blob(this._chunks, {type: this._type});
-        console.timeEnd('blob');
-        return r;
+        return new Blob(this._chunks, {type: this._type});
     };
 
 
@@ -336,9 +331,7 @@
             _this._tryToSendMessages();
         };
 
-        channel.onerror = function () {
-            console.log('error', arguments);
-        };
+        channel.onerror = this.emit.bind(this, 'error');
 
         channel.onmessage = this._onChannelMessage.bind(this);
 
@@ -350,13 +343,8 @@
         var reader = new FileReader(),
             loaddedBefore = 0;
 
-        var s = Date.now();
-        console.log('started');
-        console.time('readAsArrayBuffer');
         reader.readAsArrayBuffer(file);
-        console.timeEnd('readAsArrayBuffer');
         reader.onprogress = function (e) {
-            console.log('progress', Date.now() - s, reader.result);
             if (!reader.result) {
                 return;
             }
@@ -383,7 +371,6 @@
             }
 
             onDone();
-
         };
     }
 
@@ -411,7 +398,6 @@
             _this = this,
             file;
 
-        console.log('message', data);
         if (data instanceof ArrayBuffer || data instanceof Blob) {
             return this._lastFile.append(data);
         }
@@ -469,7 +455,6 @@
             this._createChannel();
         }
 
-        console.log('_send', message);
         message = message instanceof ArrayBuffer ? message : JSON.stringify(message);
 
         this._messagePull.push(message);
