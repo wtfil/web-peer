@@ -7,7 +7,7 @@ Easy way to use WebRTC
 
 * Send ```MediaStreams``` (audio, video)
 * Send messages
-* Send files (only Chrome now)
+* Send files (< 200mb for now)
 
 ## What can not do
 
