@@ -5,14 +5,14 @@
     var PeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
     var SessionDescription = window.RTCSessionDescription || window.mozRTCSessionDescription || window.webkitRTCSessionDescription;
     var RTCIceCandidate = window.RTCIceCandidate || window.mozRTCIceCandidate || window.webkitRTCIceCandidate;
-    var requestFileSystem = window.webkitRequestFileSystem || window.requestFileSystem;
+    var requestFileSystem = window.requestFileSystem ||  window.webkitRequestFileSystem || window.mozRequestFileSystem;
     var MAX_CHUNK_SIZE = 152400,
         RETRY_INTERVAL = 300,
         STATUS_NEW = 'new',
         STATUS_START = 'started',
         STATUS_END = 'finished';
 
-    var server = {
+    var peerServer = {
         iceServers: [
             {url: 'stun:23.21.150.121'},
             {url: 'stun:stun.l.google.com:19302'},
@@ -20,12 +20,17 @@
         ]
     };
 
-    var options = {
+    var peerOptions = {
         optional: [
-            {DtlsSrtpKeyAgreement: true},
+            {DtlsSrtpKeyAgreement: true}
         ]
     };
 
+    var channelOptions = {
+        reliable: true
+    };
+
+    
     var constraints = {
         optional: [],
         mandatory: {
@@ -119,7 +124,7 @@
      */
     FileStream.prototype.append = function (buff) {
         this._chunks.push(buff);
-        this._loaded += buff.byteLength;
+        this._loaded += buff.byteLength || buff.size;
         this.emit('progress', this._loaded / this._size);
         if (this._loaded >= this._size) {
             this._createUrl();
@@ -149,6 +154,13 @@
             onError = this.emit.bind(this, 'error'),
             _this = this;
 
+        if (!requestFileSystem) {
+            this._url = URL.createObjectURL(blob);
+            _this.emit('url', this._url);
+            _this.emit('load');
+            return;
+        }
+
         requestFileSystem(window.TEMPORARY, blob.size, function (fs) {
             fs.root.getFile(_this.name, {create: true}, function (fileEntry) {
 
@@ -165,7 +177,7 @@
             }, onError);
         }, onError);
     };
-
+   
     /**
      * Getting blob from stream
      *
@@ -174,6 +186,7 @@
     FileStream.prototype.getBlob = function () {
         return new Blob(this._chunks, {type: this._type});
     };
+
 
     
     /**
@@ -203,7 +216,7 @@
             pc;
 
         try {
-            pc = new PeerConnection(server, options);
+            pc = new PeerConnection(peerServer, peerOptions);
         } catch(e) {
             return this.emit('error', e);
         }
@@ -310,20 +323,15 @@
      * Create data channel
      */
     Peer.prototype._createChannel = function () {
-        var options = {
-            reliable: true,
-        },
-            _this = this,
-            channel = this._pc.createDataChannel('myLabel', options);
+        var _this = this,
+            channel = this._pc.createDataChannel('myLabel', channelOptions);
 
         channel.onopen = function () {
             channel.binaryType = 'arraybuffer';
             _this._tryToSendMessages();
         };
 
-        channel.onerror = function () {
-            console.log('error', arguments);
-        };
+        channel.onerror = this.emit.bind(this, 'error');
 
         channel.onmessage = this._onChannelMessage.bind(this);
 
@@ -331,30 +339,55 @@
         this._createOffer();
     };
 
-    Peer.prototype._sendFile = function (file) {
+    function readFileAsStream(file, onProgress, onDone) {
         var reader = new FileReader(),
-            loaddedBefore = 0,
-            _this = this;
+            loaddedBefore = 0;
 
         reader.readAsArrayBuffer(file);
         reader.onprogress = function (e) {
+            if (!reader.result) {
+                return;
+            }
+
             var loaded = e.loaded,
                 chunk, index;
 
             for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
                 chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
-                _this._send(chunk);
+                onProgress(chunk);
             }
 
             loaddedBefore = e.loaded;
         };
 
         reader.onloadend = function () {
-            _this._send({
-                file: id,
-                status: STATUS_END
-            }, true);
+
+            var loaded = reader.result.byteLength,
+                index, chunk;
+
+            for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
+                chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
+                onProgress(chunk);
+            }
+
+            onDone();
         };
+    }
+
+    Peer.prototype._sendFile = function (id) {
+        var file = this._files.sended[id],
+            _this = this;
+
+        readFileAsStream(
+            file,
+            this._send.bind(this),
+            function () {
+                _this._send({
+                    file: id,
+                    status: STATUS_END
+                });
+            }
+        );
     };
 
     /**
@@ -365,7 +398,7 @@
             _this = this,
             file;
 
-        if (data instanceof ArrayBuffer) {
+        if (data instanceof ArrayBuffer || data instanceof Blob) {
             return this._lastFile.append(data);
         }
 
@@ -389,7 +422,7 @@
                     break;
 
                 case STATUS_START:
-                    this._sendFile(this._files.sended[data.file]);
+                    this._sendFile(data.file);
                     break;
 
                 case STATUS_END:
