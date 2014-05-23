@@ -124,7 +124,7 @@
      */
     FileStream.prototype.append = function (buff) {
         this._chunks.push(buff);
-        this._loaded += buff.byteLength;
+        this._loaded += buff.byteLength || buff.size;
         this.emit('progress', this._loaded / this._size);
         if (this._loaded >= this._size) {
             this._createUrl();
@@ -154,6 +154,15 @@
             onError = this.emit.bind(this, 'error'),
             _this = this;
 
+        if (!requestFileSystem) {
+            console.time('create url');
+            this._url = URL.createObjectURL(blob);
+            console.timeEnd('create url');
+            _this.emit('url', this._url);
+            _this.emit('load');
+            return;
+        }
+
         requestFileSystem(window.TEMPORARY, blob.size, function (fs) {
             fs.root.getFile(_this.name, {create: true}, function (fileEntry) {
 
@@ -170,15 +179,19 @@
             }, onError);
         }, onError);
     };
-
+   
     /**
      * Getting blob from stream
      *
      * @return {Blob} file
      */
     FileStream.prototype.getBlob = function () {
-        return new Blob(this._chunks, {type: this._type});
+        console.time('blob');
+        var r = new Blob(this._chunks, {type: this._type});
+        console.timeEnd('blob');
+        return r;
     };
+
 
     
     /**
@@ -333,14 +346,17 @@
         this._createOffer();
     };
 
-    Peer.prototype._sendFile = function (id) {
+    function readFileAsStream(file, onProgress, onDone) {
         var reader = new FileReader(),
-            file = this._files.sended[id]
-            loaddedBefore = 0,
-            _this = this;
+            loaddedBefore = 0;
 
+        var s = Date.now();
+        console.log('started');
+        console.time('readAsArrayBuffer');
         reader.readAsArrayBuffer(file);
+        console.timeEnd('readAsArrayBuffer');
         reader.onprogress = function (e) {
+            console.log('progress', Date.now() - s, reader.result);
             if (!reader.result) {
                 return;
             }
@@ -350,7 +366,7 @@
 
             for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
                 chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
-                _this._send(chunk);
+                onProgress(chunk);
             }
 
             loaddedBefore = e.loaded;
@@ -358,18 +374,33 @@
 
         reader.onloadend = function () {
 
-            var loaded = reader.result.byteLength;
+            var loaded = reader.result.byteLength,
+                index, chunk;
 
             for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
                 chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
-                _this._send(chunk);
+                onProgress(chunk);
             }
 
-            _this._send({
-                file: id,
-                status: STATUS_END
-            }, true);
+            onDone();
+
         };
+    }
+
+    Peer.prototype._sendFile = function (id) {
+        var file = this._files.sended[id],
+            _this = this;
+
+        readFileAsStream(
+            file,
+            this._send.bind(this),
+            function () {
+                _this._send({
+                    file: id,
+                    status: STATUS_END
+                });
+            }
+        );
     };
 
     /**
@@ -380,18 +411,9 @@
             _this = this,
             file;
 
-        console.log(data);
-        if (data instanceof ArrayBuffer) {
+        console.log('message', data);
+        if (data instanceof ArrayBuffer || data instanceof Blob) {
             return this._lastFile.append(data);
-        }
-        if (data instanceof Blob) {
-            var fileReader = new FileReader(),
-                ar;
-            fileReader.onload = function() {
-                _this._lastFile.append(this.result);
-            };
-            fileReader.readAsArrayBuffer(data);
-            return;
         }
 
         data = JSON.parse(data);
@@ -447,6 +469,7 @@
             this._createChannel();
         }
 
+        console.log('_send', message);
         message = message instanceof ArrayBuffer ? message : JSON.stringify(message);
 
         this._messagePull.push(message);
