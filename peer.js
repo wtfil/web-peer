@@ -187,8 +187,49 @@
         return new Blob(this._chunks, {type: this._type});
     };
 
+    function SendedFile(file) {
+        this._file = file;
+        this.size = file.size;
+        this.done = 0;
+    }
 
-    
+    SendedFile.prototype.part = function(length, onProgress, onDone) {
+
+        var reader = new FileReader(),
+            loaddedBefore = 0;
+
+        reader.readAsArrayBuffer(this._file.slice(this.done, length));
+        reader.onprogress = function (e) {
+            if (!reader.result) {
+                return;
+            }
+
+            var loaded = e.loaded,
+                chunk, index;
+
+            for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
+                chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
+                onProgress(chunk);
+            }
+
+            loaddedBefore = e.loaded;
+        };
+
+        reader.onloadend = function () {
+
+            var loaded = reader.result.byteLength,
+                index, chunk;
+
+            for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
+                chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
+                onProgress(chunk);
+            }
+
+            onDone();
+        };
+        this.done += length;
+    };
+
     /**
      * WebRTC peer connection wrapper
      * @constructor
@@ -339,53 +380,26 @@
         this._createOffer();
     };
 
-    function readFileAsStream(file, onProgress, onDone) {
-        var reader = new FileReader(),
-            loaddedBefore = 0;
-
-        reader.readAsArrayBuffer(file);
-        reader.onprogress = function (e) {
-            if (!reader.result) {
-                return;
-            }
-
-            var loaded = e.loaded,
-                chunk, index;
-
-            for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
-                chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
-                onProgress(chunk);
-            }
-
-            loaddedBefore = e.loaded;
-        };
-
-        reader.onloadend = function () {
-
-            var loaded = reader.result.byteLength,
-                index, chunk;
-
-            for (index = loaddedBefore; index < loaded; index += MAX_CHUNK_SIZE) {
-                chunk = reader.result.slice(index, index + MAX_CHUNK_SIZE);
-                onProgress(chunk);
-            }
-
-            onDone();
-        };
-    }
-
     Peer.prototype._sendFile = function (id) {
         var file = this._files.sended[id],
+            MAX_READER_FILE_CHUNK = 1024 * 1024 * 30,
             _this = this;
 
-        readFileAsStream(
-            file,
+        console.log('_sendFile');
+        file.part(
+            MAX_READER_FILE_CHUNK,
             this._send.bind(this),
             function () {
-                _this._send({
-                    file: id,
-                    status: STATUS_END
-                });
+                if (file.done >= file.size) {
+                    console.log('done');
+
+                    _this._send({
+                        file: id,
+                        status: STATUS_END
+                    });
+                } else {
+                    console.log('not done');
+                }
             }
         );
     };
@@ -498,8 +512,13 @@
                 pull.unshift(message);
                 this._messageRetryTimer = setTimeout(this._tryToSendMessages.bind(this, true), RETRY_INTERVAL);
                 this.emit('error', e);
-                break;
+                return;
             }
+        }
+
+        var id = Object.keys(this._files.sended)[0];
+        if (id) {
+            this._sendFile(id);
         }
     };
 
@@ -510,7 +529,7 @@
      */
     Peer.prototype.sendFile = function (file) {
         var id = Date.now() + Math.random();
-        this._files.sended[id] = file;
+        this._files.sended[id] = new SendedFile(file);
         this._send({
             file: id,
             name: file.name,
