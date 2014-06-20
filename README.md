@@ -11,7 +11,6 @@ Easy way to use WebRTC
 
 ## What can not do
 
-* Send files to Firefox (temporary)
 * Good reconnect flow (temporary)
 
 ## Install
@@ -124,6 +123,7 @@ input.addEventListener('change', function () {
 
 on another side
 // file is instanceof private constructor ```FileStream``` which makes easier work with file
+```
 peer.on('file', function (file) {
     // file will load only after you allow it
     file.load();
