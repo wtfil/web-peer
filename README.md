@@ -1,5 +1,4 @@
-web-peer
-========
+# web-peer
 
 Easy way to use WebRTC
 
