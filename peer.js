@@ -2,6 +2,7 @@
 /*global FileReader*/
 (function (window) {
 
+    var EventEmitter = require('events').EventEmitter;
     var PeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
     var SessionDescription = window.RTCSessionDescription || window.mozRTCSessionDescription || window.webkitRTCSessionDescription;
     var RTCIceCandidate = window.RTCIceCandidate || window.mozRTCIceCandidate || window.webkitRTCIceCandidate;
@@ -30,70 +31,13 @@
         reliable: true
     };
 
-    
+
     var constraints = {
         optional: [],
         mandatory: {
             OfferToReceiveAudio: true,
             OfferToReceiveVideo: true
         }
-    };
-
-
-    /**
-     * Handle events
-     */
-    function EventEmiter() {
-        this._listeners = Object.create(null);
-    }
-
-    /**
-     * Emiting event
-     *
-     * @param {String} name of event
-     * @param {Mixed} data passed into handler
-     */
-    EventEmiter.prototype.emit = function (name, data) {
-        if (this._listeners[name]) {
-            this._listeners[name].forEach(function (haldler) {
-                haldler(data);
-            });
-        }
-        return this;
-    };
-
-    /**
-     * Add subscriber
-     *
-     * @param {String} name of event
-     * @param {Function} haldler
-     */
-    EventEmiter.prototype.on = function (name, haldler) {
-        if (!this._listeners[name]) {
-            this._listeners[name] = [];
-        }
-        this._listeners[name].push(haldler);
-        return this;
-    };
-
-    /**
-     * Remove subscriber(s)
-     *
-     * @param {String} [name] if not set all handlers will removed
-     * @param {Function} [handler] if not set all handler for <name> event will removed
-     * @return {EventEmiter} this
-     */
-    EventEmiter.prototype.off = function (name, handler) {
-        if (!arguments.legth) {
-            this._listeners = Object.create(null);
-        } else if (!handler) {
-            this._listeners[name] = null;
-        } else {
-            this._listeners[name] = this._listeners[name].filter(function (fn) {
-                return fn !== handler;
-            });
-        }
-        return this;
     };
 
     /**
@@ -104,17 +48,17 @@
      * @param {Number} options.size
      * @param {String} options.name
      * @param {String} options.type
-     */ 
+     */
     function FileStream(options) {
         this._loaded = 0;
         this._chunks = [];
         this._size = options.size;
         this._type = options.type;
         this.name = options.name;
-        EventEmiter.call(this);
+        EventEmitter.call(this);
     }
 
-    FileStream.prototype = Object.create(EventEmiter.prototype);
+    FileStream.prototype = Object.create(EventEmitter.prototype);
     FileStream.prototype.constructor = FileStream;
 
     /**
@@ -177,7 +121,7 @@
             }, onError);
         }, onError);
     };
-   
+
     /**
      * Getting blob from stream
      *
@@ -188,7 +132,6 @@
     };
 
 
-    
     /**
      * WebRTC peer connection wrapper
      * @constructor
@@ -201,14 +144,11 @@
             sended: {}
         };
         this._createConnection();
-        this.messages = new EventEmiter();
-        EventEmiter.call(this);
+        this.messages = new EventEmitter();
+        EventEmitter.call(this);
     }
-    
-    // alowing  reuse event emiter
-    Peer.EventEmiter = EventEmiter;
 
-    Peer.prototype = Object.create(EventEmiter.prototype);
+    Peer.prototype = Object.create(EventEmitter.prototype);
     Peer.prototype.constructor = Peer;
 
     Peer.prototype._createConnection = function () {
@@ -222,7 +162,7 @@
         }
         this._pc = pc;
         this._channel = null;
-        
+
         pc.onicecandidate = function (e) {
             if (e.candidate === null) {
                 return;
@@ -230,8 +170,10 @@
             pc.onicecandidate = null;
             _this.emit('sync', {candidate: e.candidate});
         };
-        pc.onaddstream  = function (stream) {
-            _this.emit('stream', stream.stream);
+        pc.onaddstream  = function (data) {
+        	if (data.stream.id !== 'default') {
+            	_this.emit('stream', data.stream);
+        	}
         };
         pc.ondatachannel = function (e) {
             var channel = e.channel;
@@ -290,7 +232,7 @@
         var settings = 'object' === typeof opts ? opts : JSON.parse(opts),
             pc = this._pc,
             _this = this;
-        
+
         if (settings.offer) {
             pc.setRemoteDescription(new SessionDescription(settings.offer), function () {
                 pc.createAnswer(
@@ -315,7 +257,6 @@
         if (settings.answer) {
             this._pc.setRemoteDescription(new SessionDescription(settings.answer));
         }
-
 
     };
 
@@ -436,7 +377,7 @@
 
     /**
      * Add media stream
-     * 
+     *
      * @param {MediaStream} stream
      */
     Peer.prototype.addStream = function (stream) {
@@ -480,7 +421,7 @@
     Peer.prototype._tryToSendMessages = function (isRetry) {
         var pull = this._messagePull,
             message;
-        
+
         if (!isRetry && this._messageRetryTimer) {
             return;
         }
@@ -489,7 +430,7 @@
             clearTimeout(this._messageRetryTimer);
             this._messageRetryTimer = null;
         }
-        
+
         while((message = pull.shift())) {
             try {
                 this._channel.send(message);
@@ -518,6 +459,15 @@
             type: file.type,
             status: STATUS_NEW
         });
+    };
+
+    /**
+     * Close connection
+     */
+    Peer.prototype.close = function () {
+    	this._pc.close();
+    	this.emit('close');
+    	this.off();
     };
 
     /*global define*/

@@ -9,10 +9,6 @@ Easy way to use WebRTC
 * Send messages
 * Send files (< 200mb for now)
 
-## What can not do
-
-* Good reconnect flow (temporary)
-
 ## Install
 
     npm install web-peer
@@ -77,7 +73,7 @@ someHowOnGetSyncMessage(function (options) {
 ```
 
 ### Peer#send(messageName, messageData)
-    
+
 send message
 ```js
 peer.send('to-chat', {name: 'boss'});
@@ -109,7 +105,7 @@ peer.on('stream', function (mediaStream) {
 ```
 
 ### Peer#sendFile(file)
-    
+
 send [```File```](https://developer.mozilla.org/en-US/docs/Web/API/File)
 ```js
 var input = document.querySelector('input[type=file]');
@@ -141,26 +137,31 @@ peer.on('file', function (file) {
 });
 ```
 
+### Peer#close()
+
+close connection
+
 ### Peer events
 
 * ```error``` any error
 * ```stream``` new incoming ```MediaStream```
 * ```file``` new incoming file
 * ```sync``` request to use signaling mechanism to send data to another peer
+* ```close``` when connection is closed
 
 
 ### FileStream#load()
-    
+
 start load file
 
 ### FileStream#getBlob()
-    
+
 get file blob
 
 ### FileStream#url
-    
+
 url to [filesystem](https://developer.mozilla.org/en-US/docs/WebGuide/API/File_System) file location
 
 ### FileStream#name
-    
+
 file name
