@@ -1,15 +1,17 @@
 {
-    "name": "example",
-    "version": "0.0.2",
-    "dependencies": {
-        "koa": "*",
-        "koa-static": "*",
-        "socket.io": "*"
-    },
-    "scripts": {
-        "start": "node --harmony app.js"
-    },
-    "engines": {
-        "node": ">= 0.11.0"
-    }
+  "name": "example",
+  "version": "0.0.2",
+  "dependencies": {
+    "koa": "*",
+    "koa-browserify": "^0.1.0",
+    "koa-static": "*",
+    "socket.io": "*",
+    "socket.io-client": "*"
+  },
+  "scripts": {
+    "start": "node --harmony server"
+  },
+  "engines": {
+    "node": ">= 0.11.0"
+  }
 }

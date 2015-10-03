@@ -1,8 +1,8 @@
-/*global io, Peer*/
-var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia,
-    getUserMedia = getUserMedia.bind(navigator),
-    socket = io.connect(window.location.host),
-    peer = new Peer();
+var Peer = require('../peer');
+var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+var getUserMedia = getUserMedia.bind(navigator);
+var socket = require('socket.io-client').connect(window.location.host);
+var peer = new Peer();
 
 peer.on('error', function (e) {
     throw e;
