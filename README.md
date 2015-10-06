@@ -147,6 +147,7 @@ close connection
 * ```file``` new incoming file
 * ```sync``` request to use signaling mechanism to send data to another peer
 * ```close``` when connection is closed
+* ```disconnect``` when remote peer is disconnected
 
 
 ### FileStream#load()

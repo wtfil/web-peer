@@ -141,7 +141,7 @@
         this._iceCandidate = null;
         this._files = {
             received: {},
-            sended: {}
+            sent: {}
         };
         this._createConnection();
         this.messages = new EventEmitter();
@@ -171,14 +171,20 @@
             _this.emit('sync', {candidate: e.candidate});
         };
         pc.onaddstream  = function (data) {
-        	if (data.stream.id !== 'default') {
-            	_this.emit('stream', data.stream);
-        	}
+            if (data.stream.id !== 'default') {
+                _this.emit('stream', data.stream);
+            }
         };
         pc.ondatachannel = function (e) {
             var channel = e.channel;
             _this._channel = channel;
             channel.onmessage = _this._onChannelMessage.bind(_this);
+        };
+        pc.oniceconnectionstatechange = function (e) {
+            if (pc.iceConnectionState == 'disconnected') {
+                _this.emit('disconnect');
+                _this._createConnection();
+            }
         };
 
     };
@@ -316,7 +322,7 @@
     }
 
     Peer.prototype._sendFile = function (id) {
-        var file = this._files.sended[id],
+        var file = this._files.sent[id],
             _this = this;
 
         readFileAsStream(
@@ -451,7 +457,7 @@
      */
     Peer.prototype.sendFile = function (file) {
         var id = Date.now() + Math.random();
-        this._files.sended[id] = file;
+        this._files.sent[id] = file;
         this._send({
             file: id,
             name: file.name,
@@ -465,9 +471,9 @@
      * Close connection
      */
     Peer.prototype.close = function () {
-    	this._pc.close();
-    	this.emit('close');
-    	this.off();
+        this._pc.close();
+        this.emit('close');
+        this.removeAllListeners();
     };
 
     /*global define*/
